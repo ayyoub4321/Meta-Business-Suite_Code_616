@@ -98,5 +98,130 @@
         "source": "ActionForex Fundamental",
         "titre": "Economics Week Ahead",
         "date": "2026-10-24 02:13"
+    },
+    "TechCrunch AI_The AI graveyard: a running list of projects and startups that didn’t make it_2026-10-24 19:00": {
+        "source": "TechCrunch AI",
+        "titre": "The AI graveyard: a running list of projects and startups that didn’t make it",
+        "date": "2026-10-24 19:00"
+    },
+    "TechCrunch AI_Block’s new voice model sounds eerily human_2026-10-24 16:00": {
+        "source": "TechCrunch AI",
+        "titre": "Block’s new voice model sounds eerily human",
+        "date": "2026-10-24 16:00"
+    },
+    "InfoQ_Google Optimizes Agent Development Kit's 200K-line Python Codebase Overnight with Gemini 4 Argon_2026-10-24 16:00": {
+        "source": "InfoQ",
+        "titre": "Google Optimizes Agent Development Kit's 200K-line Python Codebase Overnight with Gemini 4 Argon",
+        "date": "2026-10-24 16:00"
+    },
+    "TechCrunch AI_Forced to pick, Grok’s AI model chooses Republicans. OpenAI’s picks Democrats._2026-10-24 15:00": {
+        "source": "TechCrunch AI",
+        "titre": "Forced to pick, Grok’s AI model chooses Republicans. OpenAI’s picks Democrats.",
+        "date": "2026-10-24 15:00"
+    },
+    "BleepingComputer_BlackX UEFI bootkit exploits Baton Drop flaw to bypass Secure Boot_2026-10-24 14:17": {
+        "source": "BleepingComputer",
+        "titre": "BlackX UEFI bootkit exploits Baton Drop flaw to bypass Secure Boot",
+        "date": "2026-10-24 14:17"
+    },
+    "TechCrunch AI_Here are the top AI agents that can live in your text messages_2026-10-24 14:00": {
+        "source": "TechCrunch AI",
+        "titre": "Here are the top AI agents that can live in your text messages",
+        "date": "2026-10-24 14:00"
+    },
+    "The Hacker News_Brotli Decoder Flaw Behind Node.js RCE Also Affects Bun, Python and Other Widely Used Software_2026-10-24 11:09": {
+        "source": "The Hacker News",
+        "titre": "Brotli Decoder Flaw Behind Node.js RCE Also Affects Bun, Python and Other Widely Used Software",
+        "date": "2026-10-24 11:09"
+    },
+    "The Hacker News_Leaked LiteLLM Master Key Let Attackers Steal GitHub Tokens and Hijack Release Pipeline_2026-10-24 11:03": {
+        "source": "The Hacker News",
+        "titre": "Leaked LiteLLM Master Key Let Attackers Steal GitHub Tokens and Hijack Release Pipeline",
+        "date": "2026-10-24 11:03"
+    },
+    "The Hacker News_Google Says Gmail and Photos Data Shared With AI Search Could Be Used for Targeted Ads_2026-10-24 10:36": {
+        "source": "The Hacker News",
+        "titre": "Google Says Gmail and Photos Data Shared With AI Search Could Be Used for Targeted Ads",
+        "date": "2026-10-24 10:36"
+    },
+    "The Hacker News_Researchers Push Over 2 Million Updates to Remotely Disable Popcorn Time Updater That Could Fuel a Botnet_2026-10-24 09:04": {
+        "source": "The Hacker News",
+        "titre": "Researchers Push Over 2 Million Updates to Remotely Disable Popcorn Time Updater That Could Fuel a Botnet",
+        "date": "2026-10-24 09:04"
+    },
+    "InfoQ_Google’s Data Agent Kit Hits GA, Splitting Agent Guardrails Between Skills and IAM_2026-10-24 08:34": {
+        "source": "InfoQ",
+        "titre": "Google’s Data Agent Kit Hits GA, Splitting Agent Guardrails Between Skills and IAM",
+        "date": "2026-10-24 08:34"
+    },
+    "InfoQ_Cloudflare Reclaims 100 TB of RAM by Optimizing Consistent Hashing_2026-10-24 08:10": {
+        "source": "InfoQ",
+        "titre": "Cloudflare Reclaims 100 TB of RAM by Optimizing Consistent Hashing",
+        "date": "2026-10-24 08:10"
+    },
+    "The Hacker News_CISA Flags Two Actively Exploited Critical Flaws in Collabora Online and Arista VeloCloud_2026-10-24 06:25": {
+        "source": "The Hacker News",
+        "titre": "CISA Flags Two Actively Exploited Critical Flaws in Collabora Online and Arista VeloCloud",
+        "date": "2026-10-24 06:25"
+    },
+    "TechCrunch AI_OpenAI says it will no longer train its AI models on the live internet, citing “significant risks”_2026-10-23 23:05": {
+        "source": "TechCrunch AI",
+        "titre": "OpenAI says it will no longer train its AI models on the live internet, citing “significant risks”",
+        "date": "2026-10-23 23:05"
+    },
+    "TechCrunch AI_Hottest toy for Christmas? Nvidia CEO plays with adorable Microduck robots, 20,000 sell_2026-10-23 21:59": {
+        "source": "TechCrunch AI",
+        "titre": "Hottest toy for Christmas? Nvidia CEO plays with adorable Microduck robots, 20,000 sell",
+        "date": "2026-10-23 21:59"
+    },
+    "BleepingComputer_Abandoned Popcorn Time app exposed millions of devices to RCE attacks_2026-10-23 20:55": {
+        "source": "BleepingComputer",
+        "titre": "Abandoned Popcorn Time app exposed millions of devices to RCE attacks",
+        "date": "2026-10-23 20:55"
+    },
+    "TechCrunch AI_From Toast to Bessemer: Who founders will hear from at TechCrunch Founder Summit 2026_2026-10-23 19:06": {
+        "source": "TechCrunch AI",
+        "titre": "From Toast to Bessemer: Who founders will hear from at TechCrunch Founder Summit 2026",
+        "date": "2026-10-23 19:06"
+    },
+    "BleepingComputer_Microsoft Teams to get AI-powered, context-aware phishing detection_2026-10-23 18:54": {
+        "source": "BleepingComputer",
+        "titre": "Microsoft Teams to get AI-powered, context-aware phishing detection",
+        "date": "2026-10-23 18:54"
+    },
+    "The Hacker News_BlackX UEFI Bootkit Bypasses Secure Boot on Patched Windows Systems Missing Revocations_2026-10-23 18:50": {
+        "source": "The Hacker News",
+        "titre": "BlackX UEFI Bootkit Bypasses Secure Boot on Patched Windows Systems Missing Revocations",
+        "date": "2026-10-23 18:50"
+    },
+    "The Hacker News_Ruby Fixes Three Regex Engine Bugs Responsible for Four Critical GitLab RCE Flaws_2026-10-23 17:54": {
+        "source": "The Hacker News",
+        "titre": "Ruby Fixes Three Regex Engine Bugs Responsible for Four Critical GitLab RCE Flaws",
+        "date": "2026-10-23 17:54"
+    },
+    "The Hacker News_Exposed Infrastructure Reveals How Ransomware Affiliates Used AI Agents to Execute Intrusions_2026-10-23 17:50": {
+        "source": "The Hacker News",
+        "titre": "Exposed Infrastructure Reveals How Ransomware Affiliates Used AI Agents to Execute Intrusions",
+        "date": "2026-10-23 17:50"
+    },
+    "BleepingComputer_Microsoft: Windows Server 2016 reaches end of support in January_2026-10-23 17:05": {
+        "source": "BleepingComputer",
+        "titre": "Microsoft: Windows Server 2016 reaches end of support in January",
+        "date": "2026-10-23 17:05"
+    },
+    "OpenAI News_Rapidly scaling online storage to serve over 1 billion ChatGPT users (Part II)_2026-10-23 17:00": {
+        "source": "OpenAI News",
+        "titre": "Rapidly scaling online storage to serve over 1 billion ChatGPT users (Part II)",
+        "date": "2026-10-23 17:00"
+    },
+    "BleepingComputer_Quest Diagnostics confirms data breach exposed patient records_2026-10-23 16:40": {
+        "source": "BleepingComputer",
+        "titre": "Quest Diagnostics confirms data breach exposed patient records",
+        "date": "2026-10-23 16:40"
+    },
+    "Hugging Face Blog_LitPivot: Developing research ideas through dynamic contextualization within the literature landscape_2026-10-23 16:15": {
+        "source": "Hugging Face Blog",
+        "titre": "LitPivot: Developing research ideas through dynamic contextualization within the literature landscape",
+        "date": "2026-10-23 16:15"
     }
 }
