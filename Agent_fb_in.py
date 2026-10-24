@@ -1152,48 +1152,171 @@ class Extract_post:
             raise
 
     def tradication_of_text(self, text):
-        prompt = """
-        You are a professional Arabic translator specializing in financial news.
-        Translate into natural Modern Standard Arabic. Preserve financial meaning and facts.
-        Return ONLY a valid JSON object with two fields:
-        {"caption": "full translation of the text",
-         "headline": "short punchy Arabic news headline"}
-        The headline: 8 to 15 words, newsroom style, captures the key fact (and the
-        market impact if any), no emojis, no hashtags, no quotation marks, no source name.
-        """
-        t = time.time()
-        log(f"Traduction en arabe (Groq, modèle {self.model_groq_name})…")
-        messages = [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": f"SOURCE TEXT TO TRANSLATE:\n{text}"},
-        ]
-        last_error = None
-        for mode_json in (True, False):   # 1) mode JSON strict, 2) texte libre puis extraction
-            try:
-                kwargs = {"response_format": {"type": "json_object"}} if mode_json else {}
-                response = self.client.chat.completions.create(
-                    model=self.model_groq_name,
-                    messages=messages,
-                    temperature=0.0,
-                    **kwargs,
-                )
-                data = self._extract_json(response.choices[0].message.content)
-                if isinstance(data, dict) and str(data.get("caption") or "").strip():
-                    log(f"Traduction reçue en {time.time() - t:.1f}s", level="OK")
-                    return data
-                last_error = f"réponse sans 'caption' : {str(data)[:150]}"
-                log(f"Traduction inexploitable ({last_error})", level="WARN")
-            except Exception as e:
-                last_error = f"{type(e).__name__} : {str(e)[:300]}"
-                log(f"Traduction essai {'JSON' if mode_json else 'texte'} échoué ({last_error})",
-                    level="WARN")
-        log(f"Traduction ÉCHOUÉE : {last_error}", level="ERROR")
-        if last_error and "model" in last_error.lower() and (
-                "not" in last_error.lower() or "exist" in last_error.lower()):
-            log("   -> le modèle Groq n'existe pas / n'est plus disponible : "
-                "change la variable GROQ_MODEL.", level="WARN")
+    t = time.time()
+    modele_principal = self.model_groq_name
+
+    # Modèles de secours : utilisés uniquement si le modèle principal échoue.
+    modeles = list(dict.fromkeys([
+        modele_principal,
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3-32b",
+        "llama-3.1-8b-instant",
+    ]))
+
+    log(f"Traduction en arabe (Groq, modèle {modele_principal})…")
+
+    if not isinstance(text, str) or not text.strip():
+        log("Texte source vide : traduction impossible.", level="ERROR")
         return None
 
+    # Limite la taille du texte source pour éviter une génération trop longue.
+    # Ajuste cette valeur si tu dois traduire des articles plus longs.
+    texte_source = text.strip()[:3500]
+
+    prompt = """
+You are a professional financial-news translator.
+Translate the source into natural Modern Standard Arabic.
+Preserve all important facts, figures, dates, names and financial meaning.
+Be concise. Do not add information.
+
+Return exactly one JSON object:
+{"caption":"Arabic translation","headline":"Arabic headline"}
+
+The caption must be a concise but faithful translation.
+The headline must contain 8 to 15 Arabic words.
+No markdown, no comments, no text outside the JSON.
+"""
+
+    messages = [
+        {"role": "system", "content": prompt},
+        {
+            "role": "user",
+            "content": "Translate this financial news into Arabic:\n" + texte_source
+        },
+    ]
+
+    dernier_probleme = None
+
+    for modele in modeles:
+        # Une seule tentative JSON strict, puis une tentative en texte libre.
+        for mode_json in (True, False):
+            try:
+                kwargs = {
+                    "max_tokens": 800,
+                    "temperature": 0.0,
+                }
+
+                if mode_json:
+                    kwargs["response_format"] = {"type": "json_object"}
+
+                response = self.client.chat.completions.create(
+                    model=modele,
+                    messages=messages,
+                    **kwargs,
+                )
+
+                contenu = response.choices[0].message.content or ""
+                contenu = contenu.strip()
+
+                # Extraction JSON via ta méthode existante.
+                data = self._extract_json(contenu)
+
+                # Si le JSON n'a pas été reconnu, tente un décodage direct.
+                if not isinstance(data, dict):
+                    try:
+                        data = json.loads(contenu)
+                    except (json.JSONDecodeError, TypeError):
+                        data = None
+
+                # Si le modèle renvoie un JSON entouré de texte ou de balises.
+                if not isinstance(data, dict):
+                    match = re.search(r"\{.*\}", contenu, flags=re.DOTALL)
+                    if match:
+                        try:
+                            data = json.loads(match.group(0))
+                        except json.JSONDecodeError:
+                            data = None
+
+                if isinstance(data, dict):
+                    caption = str(data.get("caption") or "").strip()
+                    headline = str(data.get("headline") or "").strip()
+
+                    # Accepte une traduction valide même si le titre manque.
+                    if caption:
+                        if not headline:
+                            headline = caption.split(".")[0].strip()
+                            if len(headline) > 180:
+                                headline = headline[:177].rsplit(" ", 1)[0] + "..."
+
+                        resultat = {
+                            "caption": caption,
+                            "headline": headline,
+                        }
+
+                        self.model_groq_name = modele
+
+                        log(
+                            f"Traduction réussie avec {modele} "
+                            f"en {time.time() - t:.1f}s",
+                            level="OK",
+                        )
+                        return resultat
+
+                dernier_probleme = (
+                    f"Réponse JSON invalide ou sans caption "
+                    f"(modèle={modele}, JSON strict={mode_json})"
+                )
+                log(dernier_probleme, level="WARN")
+
+            except Exception as e:
+                dernier_probleme = f"{type(e).__name__}: {str(e)[:500]}"
+
+                log(
+                    f"Échec traduction | modèle={modele} | "
+                    f"JSON strict={mode_json} | {dernier_probleme}",
+                    level="WARN",
+                )
+
+                erreur = str(e).lower()
+
+                # Si la requête dépasse la limite OTPM, ne retente pas
+                # inutilement le même modèle avec le même texte.
+                if (
+                    "otp" in erreur
+                    or "output tokens per minute" in erreur
+                    or "request too large" in erreur
+                ):
+                    log(
+                        f"Limite de sortie dépassée avec {modele} ; "
+                        "passage au modèle suivant.",
+                        level="WARN",
+                    )
+                    break
+
+                # Une erreur d'authentification ne sera généralement pas
+                # résolue en changeant de modèle.
+                if "401" in erreur or "authentication" in erreur:
+                    log(
+                        "Vérifie la clé API Groq et les secrets GitHub.",
+                        level="ERROR",
+                    )
+                    return None
+
+                # Si le modèle n'existe pas ou n'est pas autorisé,
+                # passe directement au modèle suivant.
+                if (
+                    "model_not_found" in erreur
+                    or "does not exist" in erreur
+                    or "model_decommissioned" in erreur
+                ):
+                    break
+
+    log(
+        f"Traduction échouée après tous les essais : {dernier_probleme}",
+        level="ERROR",
+    )
+    return None
 
 # ======================================================================
 # MAIN
