@@ -80,10 +80,13 @@ OUT_W, OUT_H = 1080, 1350      # sortie finale 4:5 (Facebook / Instagram)
 IMAGE_CANDIDATES = int(os.getenv("IMAGE_CANDIDATES", "2"))
 
 # Contrôle de publication
-MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "200"))
-MAX_ATTEMPTS_PER_RUN = int(os.getenv("MAX_ATTEMPTS_PER_RUN", "300"))
-MAX_NEWS_AGE_HOURS = int(os.getenv("MAX_NEWS_AGE_HOURS", "500"))
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
+MAX_ATTEMPTS_PER_RUN = int(os.getenv("MAX_ATTEMPTS_PER_RUN", "1"))
+MAX_NEWS_AGE_HOURS = int(os.getenv("MAX_NEWS_AGE_HOURS", "24"))
 IG_CAPTION_LIMIT = 2200
+# 1 = si aucune image IA n'est générée, ne rien publier (réessai au prochain run) ;
+# 0 = publier quand même sur le fond graphique de secours
+REQUIRE_REAL_IMAGE = os.getenv("REQUIRE_REAL_IMAGE", "1") == "1"
 
 # Limites de tokens Groq (évite le 429 « Request too large » sur les petits quotas OTPM)
 TRANSLATION_MAX_TOKENS_MAIN = int(os.getenv("TRANSLATION_MAX_TOKENS_MAIN", "900"))
@@ -393,8 +396,17 @@ class TextPost:
                     level="WARN")
                 self._dead.add("cloudflare")
                 return None
-            r.raise_for_status()
+            if r.status_code == 400:
+                log(f"Cloudflare : HTTP 400 -> {r.text[:400]!r} | nouvel essai avec un prompt court",
+                    level="WARN")
+                body["prompt"] = prompt.split(", " + STYLE_SUFFIX)[0][:600]
+                r = requests.post(url, headers=headers, json=body, timeout=120)
+            if not r.ok:
+                log(f"Cloudflare : HTTP {r.status_code} -> {r.text[:400]!r}", level="WARN")
+                return None
             data = r.json()
+            if not data.get("success", True):
+                log(f"Cloudflare : success=false -> {str(data.get('errors'))[:300]}", level="WARN")
             b64 = (data.get("result") or {}).get("image")
             if not b64:
                 log(f"Cloudflare : réponse sans image : {str(data)[:300]}", level="WARN")
@@ -470,6 +482,8 @@ class TextPost:
             r = requests.get(url, timeout=180)
             log(f"Pollinations : HTTP {r.status_code} | {len(r.content) // 1024} Ko "
                 f"| {time.time() - t:.1f}s")
+            if r.status_code >= 400:
+                log(f"Pollinations : réponse -> {r.text[:200]!r}", level="WARN")
             r.raise_for_status()
             img = Image.open(io.BytesIO(r.content)).convert("RGB")
             # Retire un éventuel bandeau/filigrane en bas
@@ -913,6 +927,10 @@ class TextPost:
         log(f"Image 3/5 : génération de {max(1, IMAGE_CANDIDATES)} candidat(s)…")
         img = self._best_image(prompt)
         if img is None:
+            if REQUIRE_REAL_IMAGE:
+                raise RuntimeError("Aucune image IA générée (Cloudflare, Hugging Face et "
+                                   "Pollinations ont échoué) : publication annulée, "
+                                   "voir les lignes Cloudflare/HF/Pollinations ci-dessus.")
             log("Aucun générateur d'image disponible (Cloudflare, Hugging Face et "
                 "Pollinations ont échoué) -> fond graphique de secours.", level="WARN")
             img = self._image_fallback_design()
