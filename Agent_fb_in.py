@@ -1,6 +1,6 @@
 import sys
 import faulthandler
-SCRIPT_VERSION = "2026-10-24-cloudflare-logo"
+SCRIPT_VERSION = "2026-10-24-groq-fix"
 print(f"▶ Python démarré (version {SCRIPT_VERSION}), chargement des modules…", flush=True)
 faulthandler.enable()
 # Si le script reste figé, affiche la pile d'appel toutes les 90 s (montre OÙ il bloque)
@@ -50,6 +50,7 @@ TRUSTED_WEB_SOURCES = {
 }
 
 # Modifiables par variables d'environnement (sans toucher au code)
+# Conseil : GROQ_MODEL=llama-3.3-70b-versatile (limites plus confortables que qwen)
 GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 # Générateurs d'image, essayés dans cet ordre : Cloudflare -> Hugging Face -> Pollinations
 CF_IMAGE_MODEL = os.getenv("CF_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
@@ -68,6 +69,12 @@ MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "100"))
 MAX_ATTEMPTS_PER_RUN = int(os.getenv("MAX_ATTEMPTS_PER_RUN", "110"))
 MAX_NEWS_AGE_HOURS = int(os.getenv("MAX_NEWS_AGE_HOURS", "500"))
 IG_CAPTION_LIMIT = 2200
+
+# Limites de tokens Groq (évite le 429 « Request too large » sur les petits quotas OTPM)
+TRANSLATION_MAX_TOKENS_MAIN = int(os.getenv("TRANSLATION_MAX_TOKENS_MAIN", "900"))
+TRANSLATION_MAX_TOKENS_FALLBACK = int(os.getenv("TRANSLATION_MAX_TOKENS_FALLBACK", "1500"))
+IMAGE_PROMPT_MAX_TOKENS = int(os.getenv("IMAGE_PROMPT_MAX_TOKENS", "400"))
+TRANSLATION_INPUT_MAX_CHARS = int(os.getenv("TRANSLATION_INPUT_MAX_CHARS", "1500"))
 
 # Identité de la page
 BRAND_NAME = ("Money", ".impact")
@@ -227,6 +234,7 @@ class TextPost:
             groq_api_key=os.getenv("TOKEN_AI_DESCRYB_IMG", ""),
             timeout=60,
             max_retries=1,
+            max_tokens=IMAGE_PROMPT_MAX_TOKENS,
         )
 
     # ------------------------------------------------------------------
@@ -1041,6 +1049,10 @@ class TextPost:
 # ======================================================================
 # EXTRACTION DES NEWS + TRADUCTION
 # ======================================================================
+GROQ_FALLBACKS = ("llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b",
+                  "llama-3.1-8b-instant")
+
+
 class Extract_post:
     def __init__(self):
         self.model_groq_name = GROQ_MODEL
@@ -1152,177 +1164,62 @@ class Extract_post:
             raise
 
     def tradication_of_text(self, text):
-        t = time.time()
-        modele_principal = self.model_groq_name
-    
-        # Modèles de secours : utilisés uniquement si le modèle principal échoue.
-        modeles = list(dict.fromkeys([
-            modele_principal,
-            "llama-3.3-70b-versatile",
-            "openai/gpt-oss-120b",
-            "qwen/qwen3-32b",
-            "llama-3.1-8b-instant",
-        ]))
-    
-        log(f"Traduction en arabe (Groq, modèle {modele_principal})…")
-    
-        if not isinstance(text, str) or not text.strip():
-            log("Texte source vide : traduction impossible.", level="ERROR")
-            return None
-    
-        # Limite la taille du texte source pour éviter une génération trop longue.
-        # Ajuste cette valeur si tu dois traduire des articles plus longs.
-        texte_source = text.strip()[:3500]
-    
         prompt = """
-    You are a professional financial-news translator.
-    Translate the source into natural Modern Standard Arabic.
-    Preserve all important facts, figures, dates, names and financial meaning.
-    Be concise. Do not add information.
-    
-    Return exactly one JSON object:
-    {"caption":"Arabic translation","headline":"Arabic headline"}
-    
-    The caption must be a concise but faithful translation.
-    The headline must contain 8 to 15 Arabic words.
-    No markdown, no comments, no text outside the JSON.
-    """
-    
+        You are a professional Arabic translator specializing in financial news.
+        Translate into natural Modern Standard Arabic. Preserve financial meaning and facts.
+        Keep the translation under 900 Arabic characters (summarize lightly if the source is long).
+        Return ONLY a valid JSON object with two fields:
+        {"caption": "full translation of the text",
+         "headline": "short punchy Arabic news headline"}
+        The headline: 8 to 15 words, newsroom style, captures the key fact (and the
+        market impact if any), no emojis, no hashtags, no quotation marks, no source name.
+        """
+        t = time.time()
+        text = (text or "")[:TRANSLATION_INPUT_MAX_CHARS]   # limite l'entrée -> sortie plus courte
         messages = [
             {"role": "system", "content": prompt},
-            {
-                "role": "user",
-                "content": "Translate this financial news into Arabic:\n" + texte_source
-            },
+            {"role": "user", "content": f"SOURCE TEXT TO TRANSLATE:\n{text}"},
         ]
-    
-        dernier_probleme = None
-    
-        for modele in modeles:
-            # Une seule tentative JSON strict, puis une tentative en texte libre.
+        models = [self.model_groq_name] + [m for m in GROQ_FALLBACKS if m != self.model_groq_name]
+        last_error = None
+
+        for model in models:
+            max_tokens = (TRANSLATION_MAX_TOKENS_MAIN if model == self.model_groq_name
+                          else TRANSLATION_MAX_TOKENS_FALLBACK)
             for mode_json in (True, False):
                 try:
-                    kwargs = {
-                        "max_tokens": 800,
-                        "temperature": 0.0,
-                    }
-    
-                    if mode_json:
-                        kwargs["response_format"] = {"type": "json_object"}
-    
+                    log(f"Traduction en arabe (Groq, modèle {model}, "
+                        f"{'JSON' if mode_json else 'texte'})…")
+                    kwargs = {"response_format": {"type": "json_object"}} if mode_json else {}
                     response = self.client.chat.completions.create(
-                        model=modele,
+                        model=model,
                         messages=messages,
+                        temperature=0.0,
+                        max_tokens=max_tokens,
                         **kwargs,
                     )
-    
-                    contenu = response.choices[0].message.content or ""
-                    contenu = contenu.strip()
-    
-                    # Extraction JSON via ta méthode existante.
-                    data = self._extract_json(contenu)
-    
-                    # Si le JSON n'a pas été reconnu, tente un décodage direct.
-                    if not isinstance(data, dict):
-                        try:
-                            data = json.loads(contenu)
-                        except (json.JSONDecodeError, TypeError):
-                            data = None
-    
-                    # Si le modèle renvoie un JSON entouré de texte ou de balises.
-                    if not isinstance(data, dict):
-                        match = re.search(r"\{.*\}", contenu, flags=re.DOTALL)
-                        if match:
-                            try:
-                                data = json.loads(match.group(0))
-                            except json.JSONDecodeError:
-                                data = None
-    
-                    if isinstance(data, dict):
-                        caption = str(data.get("caption") or "").strip()
-                        headline = str(data.get("headline") or "").strip()
-    
-                        # Accepte une traduction valide même si le titre manque.
-                        if caption:
-                            if not headline:
-                                headline = caption.split(".")[0].strip()
-                                if len(headline) > 180:
-                                    headline = headline[:177].rsplit(" ", 1)[0] + "..."
-    
-                            resultat = {
-                                "caption": caption,
-                                "headline": headline,
-                            }
-    
-                            self.model_groq_name = modele
-    
-                            log(
-                                f"Traduction réussie avec {modele} "
-                                f"en {time.time() - t:.1f}s",
-                                level="OK",
-                            )
-                            return resultat
-    
-                    dernier_probleme = (
-                        f"Réponse JSON invalide ou sans caption "
-                        f"(modèle={modele}, JSON strict={mode_json})"
-                    )
-                    log(dernier_probleme, level="WARN")
-    
+                    data = self._extract_json(response.choices[0].message.content)
+                    if isinstance(data, dict) and str(data.get("caption") or "").strip():
+                        log(f"Traduction reçue en {time.time() - t:.1f}s ({model})", level="OK")
+                        return data
+                    last_error = f"réponse sans 'caption' : {str(data)[:150]}"
+                    log(f"Traduction inexploitable ({last_error})", level="WARN")
                 except Exception as e:
-                    dernier_probleme = f"{type(e).__name__}: {str(e)[:500]}"
-    
-                    log(
-                        f"Échec traduction | modèle={modele} | "
-                        f"JSON strict={mode_json} | {dernier_probleme}",
-                        level="WARN",
-                    )
-    
-                    erreur = str(e).lower()
-    
-                    # Si la requête dépasse la limite OTPM, ne retente pas
-                    # inutilement le même modèle avec le même texte.
-                    if (
-                        "otp" in erreur
-                        or "output tokens per minute" in erreur
-                        or "request too large" in erreur
-                    ):
-                        log(
-                            f"Limite de sortie dépassée avec {modele} ; "
-                            "passage au modèle suivant.",
-                            level="WARN",
-                        )
+                    last_error = f"{type(e).__name__} : {str(e)[:300]}"
+                    log(f"Traduction {model} ({'JSON' if mode_json else 'texte'}) échouée : "
+                        f"{last_error}", level="WARN")
+                    low = last_error.lower()
+                    # Limite de débit / modèle inexistant : inutile de réessayer ce modèle
+                    if ("429" in last_error or "ratelimit" in low or "model_not_found" in low
+                            or "does not exist" in low or "decommissioned" in low):
                         break
-    
-                    # Une erreur d'authentification ne sera généralement pas
-                    # résolue en changeant de modèle.
-                    if "401" in erreur or "authentication" in erreur:
-                        log(
-                            "Vérifie la clé API Groq et les secrets GitHub.",
-                            level="ERROR",
-                        )
-                        return None
-    
-                    # Si le modèle n'existe pas ou n'est pas autorisé,
-                    # passe directement au modèle suivant.
-                    if (
-                        "model_not_found" in erreur
-                        or "does not exist" in erreur
-                        or "model_decommissioned" in erreur
-                    ):
-                        break
+        log(f"Traduction ÉCHOUÉE sur tous les modèles : {last_error}", level="ERROR")
+        return None
 
-    log(
-        f"Traduction échouée après tous les essais : {dernier_probleme}",
-        level="ERROR",
-    )
-    return None
 
 # ======================================================================
 # MAIN
 # ======================================================================
-GROQ_FALLBACKS = ("llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b",
-                  "llama-3.1-8b-instant")
 TOTAL_STEPS = 6
 
 
