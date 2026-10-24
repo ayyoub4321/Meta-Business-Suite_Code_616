@@ -1,6 +1,6 @@
 import sys
 import faulthandler
-SCRIPT_VERSION = "2026-10-24-code616-it"
+SCRIPT_VERSION = "2026-10-24-code616-it-v3"
 print(f"▶ Python démarré (version {SCRIPT_VERSION}), chargement des modules…", flush=True)
 faulthandler.enable()
 # Si le script reste figé, affiche la pile d'appel toutes les 90 s (montre OÙ il bloque)
@@ -13,6 +13,7 @@ import traceback
 import json
 import re
 import time
+import warnings
 import urllib.parse
 from pathlib import Path
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ import requests
 import feedparser
 import cloudinary
 import cloudinary.uploader
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 import PIL
 from PIL import (
     Image, ImageDraw, ImageFont, ImageOps, ImageEnhance,
@@ -30,6 +31,8 @@ from PIL import (
 from groq import Groq
 from langchain_groq import ChatGroq
 from huggingface_hub import InferenceClient
+
+warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 try:
     import arabic_reshaper
@@ -65,7 +68,6 @@ TRUSTED_WEB_SOURCES = {
 }
 
 # Modifiables par variables d'environnement (sans toucher au code)
-# Conseil : GROQ_MODEL=llama-3.3-70b-versatile (limites plus confortables que qwen)
 GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 # Générateurs d'image, essayés dans cet ordre : Cloudflare -> Hugging Face -> Pollinations
 CF_IMAGE_MODEL = os.getenv("CF_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
@@ -77,19 +79,21 @@ IMG_W, IMG_H = 1024, 1280      # multiples de 16 (requis par FLUX)
 OUT_W, OUT_H = 1080, 1350      # sortie finale 4:5 (Facebook / Instagram)
 
 # Nombre de candidats générés ; le meilleur est sélectionné automatiquement
-IMAGE_CANDIDATES = int(os.getenv("IMAGE_CANDIDATES", "2"))
+IMAGE_CANDIDATES = int(os.getenv("IMAGE_CANDIDATES", "1"))
+# Nombre de tours de réessai (tous les services) pour UN candidat
+IMAGE_RETRY_ROUNDS = int(os.getenv("IMAGE_RETRY_ROUNDS", "3"))
 
 # Contrôle de publication
 MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
-MAX_ATTEMPTS_PER_RUN = int(os.getenv("MAX_ATTEMPTS_PER_RUN", "1"))
+MAX_ATTEMPTS_PER_RUN = int(os.getenv("MAX_ATTEMPTS_PER_RUN", "3"))
 MAX_NEWS_AGE_HOURS = int(os.getenv("MAX_NEWS_AGE_HOURS", "24"))
 IG_CAPTION_LIMIT = 2200
-# 1 = si aucune image IA n'est générée, ne rien publier (réessai au prochain run) ;
+# 1 = si aucune image (IA ni article) n'est disponible, ne rien publier (réessai au prochain run) ;
 # 0 = publier quand même sur le fond graphique de secours
 REQUIRE_REAL_IMAGE = os.getenv("REQUIRE_REAL_IMAGE", "1") == "1"
 
 # Limites de tokens Groq (évite le 429 « Request too large » sur les petits quotas OTPM)
-TRANSLATION_MAX_TOKENS_MAIN = int(os.getenv("TRANSLATION_MAX_TOKENS_MAIN", "900"))
+TRANSLATION_MAX_TOKENS_MAIN = int(os.getenv("TRANSLATION_MAX_TOKENS_MAIN", "1200"))
 TRANSLATION_MAX_TOKENS_FALLBACK = int(os.getenv("TRANSLATION_MAX_TOKENS_FALLBACK", "1500"))
 IMAGE_PROMPT_MAX_TOKENS = int(os.getenv("IMAGE_PROMPT_MAX_TOKENS", "400"))
 TRANSLATION_INPUT_MAX_CHARS = int(os.getenv("TRANSLATION_INPUT_MAX_CHARS", "1500"))
@@ -104,6 +108,7 @@ AR_FONT_ENV = os.getenv("AR_FONT_PATH", "")
 BASE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # Logo de la page (PNG transparent conseillé), affiché en haut à gauche
 def _find_logo():
@@ -122,7 +127,6 @@ LOGO_PATH = _find_logo()
 LOGO_BACKDROP = os.getenv("LOGO_BACKDROP", "0") == "1"
 
 # Scènes de secours si le LLM échoue (mots-clés -> scène photo précise).
-# Le texte est comparé en minuscules, ponctuation remplacée par des espaces (" ai " fonctionne).
 FALLBACK_SCENES = [
     (("security", "vulnerab", "ransomware", "malware", "breach", "hack", "cve", "phishing",
       "exploit", "botnet", "cyber", "zero-day", "zero day"),
@@ -392,7 +396,7 @@ class TextPost:
                 self._dead.add("cloudflare")
                 return None
             if r.status_code == 429:
-                log("Cloudflare : limite atteinte (quota du jour ?) -> service ignoré.",
+                log("Cloudflare : limite atteinte (quota du jour ?) -> pause, réessai possible.",
                     level="WARN")
                 self._dead.add("cloudflare")
                 return None
@@ -422,7 +426,9 @@ class TextPost:
     def _image_hf(self, prompt, seed=None):
         token = os.getenv("HF_TOKEN", "")
         if not token:
-            log("HF_TOKEN absent -> Hugging Face ignoré.", level="WARN")
+            if "hf_absent" not in self._dead:
+                log("HF_TOKEN absent -> Hugging Face ignoré.", level="WARN")
+                self._dead.add("hf_absent")
             return None
         if "hf" in self._dead:
             return None
@@ -497,21 +503,51 @@ class TextPost:
             return None
 
     def _generate_one(self, prompt, seed):
+        """Essaie Cloudflare -> HF -> Pollinations ; réessaie plusieurs tours si tout échoue."""
         services = (
             ("Cloudflare", self._image_cloudflare),
             ("Hugging Face", self._image_hf),
             ("Pollinations", self._image_pollinations),
         )
-        for nom, fonction in services:
-            img = fonction(prompt, seed)
-            if img is not None:
-                return img, nom
-            log(f"{nom} : pas d'image, service suivant…", level="WARN")
+        rounds = max(1, IMAGE_RETRY_ROUNDS)
+        for tour in range(rounds):
+            for nom, fonction in services:
+                img = fonction(prompt, seed)
+                if img is not None:
+                    return img, nom
+                log(f"{nom} : pas d'image, service suivant…", level="WARN")
+            if tour < rounds - 1:
+                attente = 20 * (tour + 1)
+                log(f"Aucun service n'a répondu : nouvel essai dans {attente}s "
+                    f"(tour {tour + 2}/{rounds})…", level="WARN")
+                time.sleep(attente)
+                # une limite par minute est temporaire : on réactive ces services
+                self._dead.discard("cloudflare")
+                self._dead.discard("pollinations")
         return None, None
+
+    def _image_from_article(self, url):
+        """Dernier recours avant le fond de secours : l'image de l'article lui-même."""
+        if not url:
+            log("Pas d'image fournie par l'article.", level="WARN")
+            return None
+        try:
+            log(f"Image de l'article : téléchargement de {url[:120]}")
+            r = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+            img = Image.open(io.BytesIO(r.content)).convert("RGB")
+            if img.size[0] < 400 or img.size[1] < 300:
+                log(f"Image de l'article trop petite ({img.size[0]}x{img.size[1]}).", level="WARN")
+                return None
+            log(f"Image de l'article utilisée ({img.size[0]}x{img.size[1]})", level="OK")
+            return img
+        except Exception as e:
+            log(f"Image de l'article indisponible : {str(e)[:200]}", level="WARN")
+            return None
 
     @staticmethod
     def _image_fallback_design():
-        """Dernier recours : fond graphique bleu nuit et or (le titre arabe est ajouté dessus)."""
+        """Dernier recours : fond graphique bleu nuit (le titre arabe est ajouté dessus)."""
         w, h = IMG_W, IMG_H
         img = Image.new("RGB", (w, h))
         d = ImageDraw.Draw(img)
@@ -602,15 +638,10 @@ class TextPost:
             return ImageFont.load_default()
 
     # ------------------------------------------------------------------
-    # Titre arabe + branding style "chaîne d'info" (comme Al Arabiya)
+    # Titre arabe + branding style "chaîne d'info"
     # ------------------------------------------------------------------
-    # L'affichage de l'arabe dépend de la version de Pillow (Raqm ou non). Au premier
-    # appel, le script teste le rendu réel et choisit un mode qui fonctionne :
-    #   "raqm"   : texte brut, Raqm/HarfBuzz fait le shaping + le sens RTL
-    #   "bidi"   : arabic_reshaper + python-bidi, moteur BASIC
-    #   "manual" : arabic_reshaper + inversion des lettres, moteur BASIC
-    # Dans tous les cas, l'ordre des mots est géré ici (un mot = un dessin), donc
-    # il ne peut plus être inversé par le moteur de texte.
+    # Modes : "raqm" (Raqm/HarfBuzz), "bidi" (reshaper + python-bidi), "manual" (inversion).
+    # L'ordre des mots est géré ici (un mot = un dessin).
     _ar_mode = None
     _AR_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]")
     _NUM_RE = re.compile(r"([0-9\u0660-\u0669][0-9\u0660-\u0669.,%]*)")
@@ -918,7 +949,7 @@ class TextPost:
     # ------------------------------------------------------------------
     # 5) Pipeline image complet
     # ------------------------------------------------------------------
-    def generer_image(self, news_original=None, headline=None):
+    def generer_image(self, news_original=None, headline=None, image_url=None):
         t0 = time.time()
         log("Image 1/5 : demande du prompt photo au LLM (Groq)…")
         prompt = self._build_prompt(news_original)
@@ -926,13 +957,16 @@ class TextPost:
         log("      " + prompt)
         log(f"Image 3/5 : génération de {max(1, IMAGE_CANDIDATES)} candidat(s)…")
         img = self._best_image(prompt)
+
+        if img is None:
+            log("Génération IA impossible -> tentative avec l'image de l'article.", level="WARN")
+            img = self._image_from_article(image_url)
+
         if img is None:
             if REQUIRE_REAL_IMAGE:
-                raise RuntimeError("Aucune image IA générée (Cloudflare, Hugging Face et "
-                                   "Pollinations ont échoué) : publication annulée, "
+                raise RuntimeError("Aucune image disponible (IA + article) : publication annulée, "
                                    "voir les lignes Cloudflare/HF/Pollinations ci-dessus.")
-            log("Aucun générateur d'image disponible (Cloudflare, Hugging Face et "
-                "Pollinations ont échoué) -> fond graphique de secours.", level="WARN")
+            log("Aucune image -> fond graphique de secours.", level="WARN")
             img = self._image_fallback_design()
 
         log("Image 4/5 : recadrage 4:5, netteté, couleurs, vignette, grain…")
@@ -1044,12 +1078,14 @@ class TextPost:
             log(f"Instagram : exception {type(e).__name__} : {str(e)[:300]}", level="ERROR")
         return False
 
-    def publier_texte_partout(self, news_original, news_translited, headline=None):
+    def publier_texte_partout(self, news_original, news_translited, headline=None,
+                              image_url=None):
         resultats = {"image": None, "facebook": False, "instagram": False, "erreur": None}
 
         try:
             log("── Génération de l'image ──", level="STEP")
-            chemin = Path(self.generer_image(news_original=news_original, headline=headline))
+            chemin = Path(self.generer_image(news_original=news_original,
+                                             headline=headline, image_url=image_url))
             if not chemin.is_file():
                 raise FileNotFoundError(f"Image générée introuvable : {chemin.resolve()}")
             resultats["image"] = str(chemin.resolve())
@@ -1116,6 +1152,19 @@ class Extract_post:
         date_utc = datetime(*date_struct[:6], tzinfo=timezone.utc)
         return date_utc.strftime("%Y-%m-%d %H:%M"), date_utc
 
+    @staticmethod
+    def get_entry_image(entry, raw_html):
+        """URL de l'image de l'article (media:content, thumbnail, enclosure ou <img>)."""
+        for key in ("media_content", "media_thumbnail"):
+            for m in entry.get(key, []) or []:
+                if m.get("url"):
+                    return m["url"]
+        for enc in entry.get("enclosures", []) or []:
+            if str(enc.get("type", "")).startswith("image") and enc.get("href"):
+                return enc["href"]
+        m = re.search(r'<img[^>]+src=["\']([^"\']+)', raw_html or "")
+        return m.group(1) if m else None
+
     def fetch_all_news(self):
         articles = []
         seen_links = set()
@@ -1180,6 +1229,7 @@ class Extract_post:
                         "date": publication_text,
                         "continue": clean_text,
                         "datetime": publication_datetime,
+                        "image_url": self.get_entry_image(entry, raw_text),
                     })
                 log(f"[{source_name}] {ajoutes} article(s) retenu(s) sur {len(feed.entries)}",
                     level="OK")
@@ -1295,9 +1345,9 @@ def diagnostic_environnement():
     log(f"Script : {Path(__file__).name} | version {SCRIPT_VERSION}")
     log(f"Heure UTC : {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S}")
     log(f"Réglages : Groq={GROQ_MODEL} | image CF={CF_IMAGE_MODEL} | image HF={HF_IMAGE_MODEL} | "
-        f"candidats={IMAGE_CANDIDATES} | max posts={MAX_POSTS_PER_RUN} | "
+        f"candidats={IMAGE_CANDIDATES} | tours={IMAGE_RETRY_ROUNDS} | max posts={MAX_POSTS_PER_RUN} | "
         f"max tentatives={MAX_ATTEMPTS_PER_RUN} | âge max={MAX_NEWS_AGE_HOURS}h | "
-        f"Graph={GRAPH_URL.rsplit('/', 1)[-1]}")
+        f"image réelle requise={REQUIRE_REAL_IMAGE} | Graph={GRAPH_URL.rsplit('/', 1)[-1]}")
 
     variables = [
         ("TOKEN_AI_DESCRYB_IMG", True, "Groq (traduction + prompt image)"),
@@ -1464,7 +1514,7 @@ def main():
     all_news = extract_post.fetch_all_news()
     STATS["news_total"] = len(all_news)
     if not all_news:
-        log("AUCUNE news récupérée : les 3 flux sont bloqués ou vides (voir lignes ci-dessus).",
+        log("AUCUNE news récupérée : les flux sont bloqués ou vides (voir lignes ci-dessus).",
             level="ERROR")
         STATS["echecs"].append(("Flux RSS", "aucune news récupérée"))
         terminer(1, "ÉCHEC (aucune news)")
@@ -1538,7 +1588,8 @@ def main():
         log(f"Titre arabe : {headline}")
         log(f"Légende     : {len(caption)} caractères")
 
-        resultat = text_post.publier_texte_partout(text_original, caption, headline)
+        resultat = text_post.publier_texte_partout(text_original, caption, headline,
+                                                   image_url=news.get("image_url"))
 
         if resultat.get("facebook") or resultat.get("instagram"):
             historique[post_id] = {"source": src, "titre": title, "date": date}
