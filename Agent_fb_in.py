@@ -1,6 +1,6 @@
 import sys
 import faulthandler
-SCRIPT_VERSION = "2026-10-24-groq-fix"
+SCRIPT_VERSION = "2026-10-24-code616-it"
 print(f"▶ Python démarré (version {SCRIPT_VERSION}), chargement des modules…", flush=True)
 faulthandler.enable()
 # Si le script reste figé, affiche la pile d'appel toutes les 90 s (montre OÙ il bloque)
@@ -44,9 +44,24 @@ print("▶ Modules chargés.", flush=True)
 # CONFIGURATION
 # ======================================================================
 TRUSTED_WEB_SOURCES = {
-    "FXStreet": "https://www.fxstreet.com/rss/news",
-    "InvestingLive Macro": "https://investinglive.com/rss/news",
-    "ActionForex Fundamental": "https://www.actionforex.com/category/fundamental-analysis/feed/",
+    # --- Intelligence artificielle ---
+    "TechCrunch AI": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "VentureBeat AI": "https://venturebeat.com/category/ai/feed/",
+    "Hugging Face Blog": "https://huggingface.co/blog/feed.xml",
+    "OpenAI News": "https://openai.com/news/rss.xml",
+    # --- Langages et versions (Python, PHP, JavaScript, Go, Rust...) ---
+    "Python Insider": "https://feeds.feedburner.com/PythonInsider",
+    "PHP.net News": "https://www.php.net/feed.atom",
+    "Node.js Blog": "https://nodejs.org/en/feed/blog.xml",
+    "Go Blog": "https://go.dev/blog/feed.atom",
+    "Rust Blog": "https://blog.rust-lang.org/feed.xml",
+    # --- Développement, outils, infrastructure ---
+    "GitHub Blog": "https://github.blog/feed/",
+    "InfoQ": "https://feed.infoq.com/",
+    "Ars Technica IT": "https://feeds.arstechnica.com/arstechnica/technology-lab",
+    # --- Cybersécurité et failles ---
+    "The Hacker News": "https://feeds.feedburner.com/TheHackersNews",
+    "BleepingComputer": "https://www.bleepingcomputer.com/feed/",
 }
 
 # Modifiables par variables d'environnement (sans toucher au code)
@@ -77,9 +92,9 @@ IMAGE_PROMPT_MAX_TOKENS = int(os.getenv("IMAGE_PROMPT_MAX_TOKENS", "400"))
 TRANSLATION_INPUT_MAX_CHARS = int(os.getenv("TRANSLATION_INPUT_MAX_CHARS", "1500"))
 
 # Identité de la page
-BRAND_NAME = ("Money", ".impact")
-BRAND_HANDLE = "@money.impact.today"
-BRAND_ACCENT = (255, 196, 0)
+BRAND_NAME = ("code", "6.16")
+BRAND_HANDLE = "@code616"
+BRAND_ACCENT = (0, 224, 150)
 # Police arabe grasse. Idéal : Cairo-Bold.ttf ou Tajawal-Bold.ttf dans le dossier ./fonts/
 AR_FONT_ENV = os.getenv("AR_FONT_PATH", "")
 
@@ -103,37 +118,44 @@ LOGO_PATH = _find_logo()
 # Mettre LOGO_BACKDROP=1 si ton logo est sombre (ajoute un fond foncé derrière)
 LOGO_BACKDROP = os.getenv("LOGO_BACKDROP", "0") == "1"
 
-# Scènes de secours si le LLM échoue (mots-clés -> scène photo précise)
+# Scènes de secours si le LLM échoue (mots-clés -> scène photo précise).
+# Le texte est comparé en minuscules, ponctuation remplacée par des espaces (" ai " fonctionne).
 FALLBACK_SCENES = [
-    (("gold", "xau", "bullion"),
-     "Stack of gold bars on dark polished surface inside a bank vault, blurred safety deposit boxes behind"),
-    (("oil", "crude", "wti", "brent", "opec"),
-     "Oil refinery towers at dusk with glowing flare stacks, blurred pipelines and storage tanks in background"),
-    (("bitcoin", "crypto", "btc", "ethereum"),
-     "Single physical gold bitcoin coin standing on dark reflective glass, blurred server racks behind"),
-    (("dollar", "usd", "fed ", "fomc", "powell", "treasury", "yield"),
-     "Stack of US hundred-dollar bills on dark marble desk, blurred columns of a federal building behind"),
-    (("euro", "eur", "ecb", "lagarde"),
-     "Euro banknotes fanned out on dark stone surface, blurred European central bank facade behind"),
-    (("yen", "jpy", "boj"),
-     "Japanese yen banknotes and coins on dark lacquered surface, blurred Tokyo skyline at dusk behind"),
-    (("pound", "gbp", "boe", "sterling"),
-     "British pound notes on dark oak-free slate surface, blurred London financial district behind"),
-    (("stock", "nasdaq", "s&p", "dow", "equities", "wall street"),
-     "New York Stock Exchange facade with large columns and flags, dramatic evening light, blurred street below"),
+    (("security", "vulnerab", "ransomware", "malware", "breach", "hack", "cve", "phishing",
+      "exploit", "botnet", "cyber", "zero-day", "zero day"),
+     "Closed brass padlock resting on a dark circuit board, blurred server racks with cyan LEDs behind"),
+    (("openai", "gpt", "llm", "chatgpt", "gemini", "claude", "anthropic", "neural", "nvidia",
+      "gpu", " ai ", "artificial intelligence", "machine learning", "deepseek", "mistral",
+      "hugging face", "copilot"),
+     "Single high-end GPU graphics card on dark reflective surface with cyan edge light, blurred server racks behind"),
+    (("python", "php", "javascript", "typescript", "node.js", "nodejs", "rust", "golang", " go ",
+      "java ", "kotlin", "swift", "c++", "ruby", "compiler", "framework", "library", "npm",
+      "bug", "developer", "programming", "code", "api", "software", "github", "open source",
+      "open-source"),
+     "Mechanical keyboard with soft cyan backlight on a dark desk, blurred glowing monitors far behind"),
+    (("cloud", "aws", "azure", "kubernetes", "docker", "server", "data center", "datacenter",
+      "outage", "linux"),
+     "Long corridor of server racks with blue and cyan LEDs, shallow depth of field, cold light"),
+    (("chip", "semiconductor", "processor", "cpu", "quantum", "intel", "amd", "arm "),
+     "Macro shot of a silicon processor chip on a motherboard, cyan reflections, blurred circuit traces behind"),
+    (("android", "ios", "iphone", "smartphone", "mobile", "app store", "play store"),
+     "Plain black smartphone lying on a dark matte surface with cyan edge light, blurred bokeh behind"),
+    (("network", "internet", "5g", "fiber", "router", "wifi", "wi-fi", "dns"),
+     "Bundle of glowing fiber-optic cables plugged into a dark network switch, cyan light, blurred rack behind"),
+    (("robot", "humanoid", "drone"),
+     "Close-up of a metallic robotic arm joint with cyan rim light, blurred dark factory behind"),
 ]
 DEFAULT_SCENE = (
-    "Stack of gold bars on dark marble surface, blurred bank vault door in background"
+    "Close-up of a glowing processor chip on a dark circuit board, cyan rim light, blurred server racks behind"
 )
 
 STYLE_SUFFIX = (
-    "warm cinematic side lighting, shot on Canon EOS R5, 85mm f/1.4 lens, "
+    "cool cinematic side lighting, shot on Canon EOS R5, 85mm f/1.4 lens, "
     "shallow depth of field, creamy bokeh, tack-sharp focus on the hero subject, "
-    "editorial photography, professional color grading in deep navy blue and warm gold, "
+    "editorial technology photography, professional color grading in deep navy blue, near-black and electric cyan, "
     "photorealistic, ultra detailed, 8k, hero subject in the upper 60% of the frame, lower 40% of the frame dark, smooth and uncluttered, "
     "no text, no letters, no logos, no people"
 )
-
 
 # ======================================================================
 # LOGS : affichage en temps réel, étape par étape (visible dans GitHub Actions)
@@ -242,39 +264,40 @@ class TextPost:
     # ------------------------------------------------------------------
     def donne_moi_prompt_images(self, news):
         system_prompt = (
-            "You are an award-winning Reuters financial photojournalist and editorial "
+            "You are an award-winning technology photojournalist and editorial "
             "art director. You write vivid, specific, physically realistic photo "
-            "descriptions. You NEVER use vague terms like 'trading screens' or "
-            "'financial charts'. You always name exact objects, materials, lighting "
+            "descriptions. You NEVER use vague terms like 'digital world' or "
+            "'futuristic network'. You always name exact physical objects, materials, lighting "
             "and depth of field. You forbid abstract designs, 3D renders, neon, "
-            "wireframes and futuristic shapes."
+            "wireframes, holograms and futuristic shapes."
         )
 
         user_prompt = f"""
-        FINANCIAL NEWS:
+        IT / TECH NEWS (AI, programming languages, software releases, bugs, security, hardware, cloud):
         "{(news or '')[:800]}"
 
         Identify the MAIN SUBJECT of this news and write ONE photorealistic editorial
         photo description that represents it visually.
 
         Subject mapping examples:
-        - bond yields / Treasuries -> stack of Treasury bonds on a desk
-        - gold -> gold bars in a vault
-        - oil -> refinery at dusk or oil barrels
-        - central bank -> central bank building facade
-        - US dollar -> dollar banknotes
-        - stock selloff / rally -> stock exchange facade
-        - crypto -> physical coin on reflective surface
+        - AI model / LLM / chatbot / AI company -> a single GPU graphics card or AI accelerator chip on a dark surface
+        - new version or bug of a programming language (Python, PHP, JavaScript, Rust...) -> mechanical keyboard or laptop on a dark desk, blurred glow behind
+        - cybersecurity / vulnerability / data breach -> padlock on a circuit board
+        - cloud / data center / outage / Linux / servers -> corridor of server racks with blue LEDs
+        - semiconductor / CPU / hardware -> macro shot of a processor chip
+        - network / internet / telecom -> fiber-optic cables in a network switch
+        - mobile / Android / iOS -> plain smartphone on a dark surface
+        - robotics -> metallic robotic arm joint
 
         Rules:
         1. The FIRST WORDS must name the exact physical hero subject.
         2. Hero subject sits in the UPPER 60% of the frame, sharp focus, slightly off-center.
-        3. Background: relevant but blurred (bokeh). Specific lighting (e.g. golden
-           hour side-light, tungsten vault light, cold blue dawn light).
+        3. Background: relevant but blurred (bokeh). Specific lighting (e.g. cyan rim
+           light, cold blue LED glow, soft desk-lamp side-light).
         4. The lower 40% of the frame must be dark, smooth and uncluttered (a headline will be printed there).
-        5. Palette: deep navy blue and warm gold.
-        6. FORBIDDEN: people, faces, hands, text, letters, numbers, logos, watermarks,
-           abstract shapes, 3D renders, neon, computer screens with charts.
+        5. Palette: deep navy blue, near-black and electric cyan.
+        6. FORBIDDEN: people, faces, hands, readable text, letters, numbers, logos, watermarks,
+           abstract shapes, 3D renders, neon signs, holograms, computer screens with readable code.
         7. Max 60 words. End with: photorealistic, 85mm lens, sharp focus.
 
         OUTPUT ONLY this format:
@@ -283,7 +306,7 @@ class TextPost:
 
         NEGATIVE PROMPT:
         people, faces, hands, text, letters, numbers, logos, watermark, abstract,
-        3d render, neon, cartoon, illustration, painting, blurry, low quality
+        3d render, neon, hologram, cartoon, illustration, painting, blurry, low quality
         """
 
         try:
@@ -311,7 +334,7 @@ class TextPost:
 
     @staticmethod
     def _fallback_scene(news):
-        low = (news or "").lower()
+        low = " " + re.sub(r"[^a-z0-9+#. ]", " ", (news or "").lower()) + " "
         for keywords, scene in FALLBACK_SCENES:
             if any(k in low for k in keywords):
                 return scene
@@ -485,7 +508,7 @@ class TextPost:
                    fill=tuple(int(top[i] + (bot[i] - top[i]) * t) for i in range(3)))
         glow = Image.new("RGB", (w, h), (0, 0, 0))
         ImageDraw.Draw(glow).ellipse([w * 0.15, h * 0.05, w * 0.85, h * 0.55],
-                                     fill=(120, 85, 10))
+                                     fill=(0, 85, 110))
         glow = glow.filter(ImageFilter.GaussianBlur(120))
         return ImageChops.add(img, glow)
 
@@ -808,7 +831,7 @@ class TextPost:
             )
             top = bottom - len(lines) * line_h
 
-            # Étiquette = nom de la page (Money.impact)
+            # Étiquette = nom de la page (code6.16)
             f_tag = self._load_font(int(w * 0.038))
             ta = probe.textlength(part_a, font=f_tag)
             tb_w = probe.textlength(part_b, font=f_tag)
@@ -868,7 +891,7 @@ class TextPost:
             draw.text((tag_box[0] + tp_x, tag_box[1] + tp_y), part_a, font=f_tag,
                       fill=(5, 12, 30, 255))
             draw.text((tag_box[0] + tp_x + ta, tag_box[1] + tp_y), part_b, font=f_tag,
-                      fill=(214, 148, 0, 255))
+                      fill=(0, 150, 105, 255))
             for i, line in enumerate(lines):
                 self._draw_rtl_line(draw, w - margin, top + i * line_h, line, font,
                                     (255, 255, 255, 255))
@@ -947,7 +970,7 @@ class TextPost:
                               secure=True)
             log("Instagram 1/4 : envoi de l'image sur Cloudinary…")
             upload = cloudinary.uploader.upload(
-                str(chemin), resource_type="image", folder="actualites_financieres"
+                str(chemin), resource_type="image", folder="code616_news"
             )
             image_url = upload.get("secure_url")
             if not (image_url and image_url.startswith("https://")):
@@ -1165,14 +1188,18 @@ class Extract_post:
 
     def tradication_of_text(self, text):
         prompt = """
-        You are a professional Arabic translator specializing in financial news.
-        Translate into natural Modern Standard Arabic. Preserve financial meaning and facts.
+        You are a professional Arabic translator and tech journalist covering all of IT:
+        artificial intelligence, programming languages (Python, PHP, JavaScript, Go, Rust...),
+        software releases and bugs, open source, cloud, hardware and cybersecurity.
+        Translate into natural Modern Standard Arabic. Preserve technical meaning and facts.
+        Keep product names, company names, programming languages, library and repository names,
+        version numbers (e.g. Python 3.14), CVE identifiers and code terms in their original Latin spelling.
         Keep the translation under 900 Arabic characters (summarize lightly if the source is long).
         Return ONLY a valid JSON object with two fields:
         {"caption": "full translation of the text",
          "headline": "short punchy Arabic news headline"}
-        The headline: 8 to 15 words, newsroom style, captures the key fact (and the
-        market impact if any), no emojis, no hashtags, no quotation marks, no source name.
+        The headline: 8 to 15 words, newsroom style, captures the key fact (and why it matters
+        for developers or users), no emojis, no hashtags, no quotation marks, no source name.
         """
         t = time.time()
         text = (text or "")[:TRANSLATION_INPUT_MAX_CHARS]   # limite l'entrée -> sortie plus courte
