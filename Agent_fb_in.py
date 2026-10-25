@@ -1,6 +1,6 @@
 import sys
 import faulthandler
-SCRIPT_VERSION = "2026-10-24-code616-it-v3"
+SCRIPT_VERSION = "2026-10-25-code616-it-v4"
 print(f"▶ Python démarré (version {SCRIPT_VERSION}), chargement des modules…", flush=True)
 faulthandler.enable()
 # Si le script reste figé, affiche la pile d'appel toutes les 90 s (montre OÙ il bloque)
@@ -1526,8 +1526,6 @@ def main():
     candidates = []
     for i, news in enumerate(all_news):
         post_id = f"{news['source']}_{news['title']}_{news['date']}"
-        date=news['date']
-        source=news['source']
         age_h = (now - news["datetime"]).total_seconds() / 3600
         if post_id in historique:
             statut = "déjà publiée"
@@ -1574,7 +1572,6 @@ def main():
 
         text_original = f"{title}\n{content}\n\nsource: {src}, date: {date}"
         text_translated = extract_post.tradication_of_text(text_original)
-        text_translated+=f"\n\n source: {src} date : {date}"
 
         if not isinstance(text_translated, dict):
             STATS["echecs"].append((title, "traduction échouée"))
@@ -1584,6 +1581,7 @@ def main():
             log(f"Traduction sans 'caption' : {str(text_translated)[:200]}", level="ERROR")
             STATS["echecs"].append((title, "traduction vide"))
             continue
+        caption += f"\n\n📰 المصدر: {src}\n🕒 {date} UTC"
         headline = str(text_translated.get("headline") or "").strip()
         if not headline:  # secours : début de la légende
             headline = " ".join(caption.split()[:14])
