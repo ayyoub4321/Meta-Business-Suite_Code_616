@@ -1526,6 +1526,8 @@ def main():
     candidates = []
     for i, news in enumerate(all_news):
         post_id = f"{news['source']}_{news['title']}_{news['date']}"
+        date=news['date']
+        source=news['source']
         age_h = (now - news["datetime"]).total_seconds() / 3600
         if post_id in historique:
             statut = "déjà publiée"
@@ -1572,6 +1574,7 @@ def main():
 
         text_original = f"{title}\n{content}\n\nsource: {src}, date: {date}"
         text_translated = extract_post.tradication_of_text(text_original)
+        text_translated+=f"\n\n source: {src} date : {date}"
 
         if not isinstance(text_translated, dict):
             STATS["echecs"].append((title, "traduction échouée"))
