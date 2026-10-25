@@ -1,6 +1,6 @@
 import sys
 import faulthandler
-SCRIPT_VERSION = "2026-10-25-code616-it-v4"
+SCRIPT_VERSION = "2026-10-25-code616-it-v6"
 print(f"▶ Python démarré (version {SCRIPT_VERSION}), chargement des modules…", flush=True)
 faulthandler.enable()
 # Si le script reste figé, affiche la pile d'appel toutes les 90 s (montre OÙ il bloque)
@@ -79,7 +79,7 @@ IMG_W, IMG_H = 1024, 1280      # multiples de 16 (requis par FLUX)
 OUT_W, OUT_H = 1080, 1350      # sortie finale 4:5 (Facebook / Instagram)
 
 # Nombre de candidats générés ; le meilleur est sélectionné automatiquement
-IMAGE_CANDIDATES = int(os.getenv("IMAGE_CANDIDATES", "1"))
+IMAGE_CANDIDATES = int(os.getenv("IMAGE_CANDIDATES", "2"))
 # Nombre de tours de réessai (tous les services) pour UN candidat
 IMAGE_RETRY_ROUNDS = int(os.getenv("IMAGE_RETRY_ROUNDS", "3"))
 
@@ -95,7 +95,7 @@ REQUIRE_REAL_IMAGE = os.getenv("REQUIRE_REAL_IMAGE", "1") == "1"
 # Limites de tokens Groq (évite le 429 « Request too large » sur les petits quotas OTPM)
 TRANSLATION_MAX_TOKENS_MAIN = int(os.getenv("TRANSLATION_MAX_TOKENS_MAIN", "1200"))
 TRANSLATION_MAX_TOKENS_FALLBACK = int(os.getenv("TRANSLATION_MAX_TOKENS_FALLBACK", "1500"))
-IMAGE_PROMPT_MAX_TOKENS = int(os.getenv("IMAGE_PROMPT_MAX_TOKENS", "400"))
+IMAGE_PROMPT_MAX_TOKENS = int(os.getenv("IMAGE_PROMPT_MAX_TOKENS", "700"))
 TRANSLATION_INPUT_MAX_CHARS = int(os.getenv("TRANSLATION_INPUT_MAX_CHARS", "1500"))
 
 # Identité de la page
@@ -125,43 +125,52 @@ def _find_logo():
 LOGO_PATH = _find_logo()
 # Mettre LOGO_BACKDROP=1 si ton logo est sombre (ajoute un fond foncé derrière)
 LOGO_BACKDROP = os.getenv("LOGO_BACKDROP", "0") == "1"
+# 1 = logo JPG à fond noir : le noir devient transparent (plus de carré noir sur la photo)
+LOGO_KEY_BLACK = os.getenv("LOGO_KEY_BLACK", "1") == "1"
+# Part de la hauteur occupée par la photo (le reste = fond sombre pour le titre)
+PHOTO_RATIO = float(os.getenv("PHOTO_RATIO", "0.74"))
 
 # Scènes de secours si le LLM échoue (mots-clés -> scène photo précise).
 FALLBACK_SCENES = [
     (("security", "vulnerab", "ransomware", "malware", "breach", "hack", "cve", "phishing",
       "exploit", "botnet", "cyber", "zero-day", "zero day"),
-     "Closed brass padlock resting on a dark circuit board, blurred server racks with cyan LEDs behind"),
+     "A glossy dark metal padlock with a glowing cyan keyhole, floating, tiny cyan light particles around it"),
+    (("shut down", "shutdown", "discontinue", "graveyard", "failed", "fails", "bankrupt",
+      "layoff", "collapse"),
+     "A cracked dark glass cube with faint cyan light leaking through the cracks, floating"),
     (("openai", "gpt", "llm", "chatgpt", "gemini", "claude", "anthropic", "neural", "nvidia",
       "gpu", " ai ", "artificial intelligence", "machine learning", "deepseek", "mistral",
-      "hugging face", "copilot"),
-     "Single high-end GPU graphics card on dark reflective surface with cyan edge light, blurred server racks behind"),
+      "hugging face", "copilot", "agent"),
+     "A floating glossy dark sphere with a glowing cyan core, thin orbiting metallic rings around it"),
     (("python", "php", "javascript", "typescript", "node.js", "nodejs", "rust", "golang", " go ",
       "java ", "kotlin", "swift", "c++", "ruby", "compiler", "framework", "library", "npm",
       "bug", "developer", "programming", "code", "api", "software", "github", "open source",
       "open-source"),
-     "Mechanical keyboard with soft cyan backlight on a dark desk, blurred glowing monitors far behind"),
+     "Three floating dark glass plates stacked with glowing cyan edges, smooth and blank"),
     (("cloud", "aws", "azure", "kubernetes", "docker", "server", "data center", "datacenter",
       "outage", "linux"),
-     "Long corridor of server racks with blue and cyan LEDs, shallow depth of field, cold light"),
+     "A row of sleek dark server units with thin glowing cyan light strips, seen at a low angle"),
     (("chip", "semiconductor", "processor", "cpu", "quantum", "intel", "amd", "arm "),
-     "Macro shot of a silicon processor chip on a motherboard, cyan reflections, blurred circuit traces behind"),
+     "A single smooth dark square processor chip with glowing cyan edge lines, floating at an angle"),
     (("android", "ios", "iphone", "smartphone", "mobile", "app store", "play store"),
-     "Plain black smartphone lying on a dark matte surface with cyan edge light, blurred bokeh behind"),
+     "A plain black smartphone with a blank dark screen, floating at an angle with cyan edge light"),
     (("network", "internet", "5g", "fiber", "router", "wifi", "wi-fi", "dns"),
-     "Bundle of glowing fiber-optic cables plugged into a dark network switch, cyan light, blurred rack behind"),
+     "Glowing cyan fiber-optic strands converging toward a single bright point on a dark background"),
     (("robot", "humanoid", "drone"),
-     "Close-up of a metallic robotic arm joint with cyan rim light, blurred dark factory behind"),
+     "A smooth dark metallic robotic arm segment with a glowing cyan joint ring"),
 ]
 DEFAULT_SCENE = (
-    "Close-up of a glowing processor chip on a dark circuit board, cyan rim light, blurred server racks behind"
+    "A floating glossy dark sphere with a glowing cyan core, thin orbiting metallic rings around it"
 )
 
+# Style FLUX : rendu 3D minimaliste, net, sans texte. FLUX ignore les négations
+# (« no text » fait même apparaître du texte) : tout est formulé en positif.
 STYLE_SUFFIX = (
-    "cool cinematic side lighting, shot on Canon EOS R5, 85mm f/1.4 lens, "
-    "shallow depth of field, creamy bokeh, tack-sharp focus on the hero subject, "
-    "editorial technology photography, professional color grading in deep navy blue, near-black and electric cyan, "
-    "photorealistic, ultra detailed, 8k, hero subject in the upper 60% of the frame, lower 40% of the frame dark, smooth and uncluttered, "
-    "no text, no letters, no logos, no people"
+    "minimalist premium 3D render, single hero object centered in the frame, "
+    "matte dark navy glass and brushed metal materials, electric cyan rim light and soft glow, "
+    "clean smooth surfaces, soft studio lighting, razor sharp focus, "
+    "plain dark navy gradient background with generous empty space, "
+    "high-end technology poster, octane render, 4k"
 )
 
 # ======================================================================
@@ -271,49 +280,37 @@ class TextPost:
     # ------------------------------------------------------------------
     def donne_moi_prompt_images(self, news):
         system_prompt = (
-            "You are an award-winning technology photojournalist and editorial "
-            "art director. You write vivid, specific, physically realistic photo "
-            "descriptions. You NEVER use vague terms like 'digital world' or "
-            "'futuristic network'. You always name exact physical objects, materials, lighting "
-            "and depth of field. You forbid abstract designs, 3D renders, neon, "
-            "wireframes, holograms and futuristic shapes."
+            "You are an art director writing short subject descriptions for a FLUX image "
+            "generator. The final image is a clean, minimalist 3D render of ONE physical hero "
+            "object on a dark navy background. You describe only the object, its material and "
+            "its pose. You never use objects that carry writing."
         )
 
         user_prompt = f"""
-        IT / TECH NEWS (AI, programming languages, software releases, bugs, security, hardware, cloud):
+        IT / TECH NEWS:
         "{(news or '')[:800]}"
 
-        Identify the MAIN SUBJECT of this news and write ONE photorealistic editorial
-        photo description that represents it visually.
+        Describe the ONE hero object that best symbolizes this news.
 
-        Subject mapping examples:
-        - AI model / LLM / chatbot / AI company -> a single GPU graphics card or AI accelerator chip on a dark surface
-        - new version or bug of a programming language (Python, PHP, JavaScript, Rust...) -> mechanical keyboard or laptop on a dark desk, blurred glow behind
-        - cybersecurity / vulnerability / data breach -> padlock on a circuit board
-        - cloud / data center / outage / Linux / servers -> corridor of server racks with blue LEDs
-        - semiconductor / CPU / hardware -> macro shot of a processor chip
-        - network / internet / telecom -> fiber-optic cables in a network switch
-        - mobile / Android / iOS -> plain smartphone on a dark surface
-        - robotics -> metallic robotic arm joint
+        Examples:
+        - AI model, chatbot, AI agents -> a floating glossy dark sphere with a glowing cyan core and thin orbiting rings
+        - AI project failures or shutdowns -> a cracked dark glass cube with cyan light leaking through
+        - programming language release or bug -> three floating dark glass plates with glowing cyan edges
+        - security flaw, breach, malware -> a glossy dark metal padlock with a glowing cyan keyhole
+        - cloud, servers, outage -> a row of sleek dark server units with cyan light strips
+        - chip, hardware -> a smooth dark processor chip with glowing cyan edge lines
+        - network, internet -> glowing cyan fiber-optic strands converging to a point
+        - mobile -> a plain black smartphone with a blank screen
+        - robotics -> a smooth dark metallic robotic arm segment
 
         Rules:
-        1. The FIRST WORDS must name the exact physical hero subject.
-        2. Hero subject sits in the UPPER 60% of the frame, sharp focus, slightly off-center.
-        3. Background: relevant but blurred (bokeh). Specific lighting (e.g. cyan rim
-           light, cold blue LED glow, soft desk-lamp side-light).
-        4. The lower 40% of the frame must be dark, smooth and uncluttered (a headline will be printed there).
-        5. Palette: deep navy blue, near-black and electric cyan.
-        6. FORBIDDEN: people, faces, hands, readable text, letters, numbers, logos, watermarks,
-           abstract shapes, 3D renders, neon signs, holograms, computer screens with readable code.
-        7. Max 60 words. End with: photorealistic, 85mm lens, sharp focus.
+        1. ONE object only, 8 to 25 words, concrete shape, material and pose.
+        2. FORBIDDEN objects: screens, monitors, keyboards, books, posters, signs, labels,
+           documents, code, logos, people, faces, hands.
+        3. Colors: dark navy, black and electric cyan only.
 
-        OUTPUT ONLY this format:
-        POSITIVE PROMPT:
-        [description]
-
-        NEGATIVE PROMPT:
-        people, faces, hands, text, letters, numbers, logos, watermark, abstract,
-        3d render, neon, hologram, cartoon, illustration, painting, blurry, low quality
+        OUTPUT ONLY one line in this exact format:
+        SUBJECT: [description]
         """
 
         try:
@@ -330,14 +327,19 @@ class TextPost:
             return Fallback()
 
     @staticmethod
-    def _parse_prompts(text):
+    def _parse_subject(text):
         text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S | re.I)
-        pos = re.search(r"POSITIVE PROMPT:\s*(.*?)\s*NEGATIVE PROMPT:", text, re.S | re.I)
-        neg = re.search(r"NEGATIVE PROMPT:\s*(.*)", text, re.S | re.I)
-        if not pos or not neg:
-            return None, None
-        positive = pos.group(1).strip().strip('"').strip("[]")
-        return positive, neg.group(1).strip()
+        m = re.search(r"SUBJECT:\s*(.+)", text, re.I)
+        if not m:
+            return None
+        subject = m.group(1).strip().split("\n")[0].strip().strip('"').strip("[]").strip()
+        if len(subject.split()) < 4:
+            return None
+        if re.search(r"\b(screens?|monitors?|text|letters?|logos?|keyboards?|books?|posters?|"
+                     r"signs?|labels?|documents?|code|people|person|faces?|hands?)\b",
+                     subject, re.I):
+            return None   # objets qui font écrire du faux texte ou des visages à FLUX
+        return subject
 
     @staticmethod
     def _fallback_scene(news):
@@ -351,15 +353,14 @@ class TextPost:
         t = time.time()
         text = self.donne_moi_prompt_images(news).content
         log(f"LLM : réponse en {time.time() - t:.1f}s ({len(text or '')} caractères)")
-        positive, _ = self._parse_prompts(text)
-        if not positive or len(positive.split()) < 6:
-            positive = self._fallback_scene(news)
-            log("LLM : prompt inexploitable -> scène de secours (mots-clés) utilisée.", level="WARN")
+        subject = self._parse_subject(text)
+        if not subject:
+            subject = self._fallback_scene(news)
+            log("LLM : sujet inexploitable -> scène de secours (mots-clés) utilisée.", level="WARN")
         else:
-            log("LLM : prompt photo reçu.", level="OK")
-        # FLUX ignore le negative prompt : les interdits sont dans le positif
-        positive = " ".join(positive.split()[:70])
-        return f"{positive}, {STYLE_SUFFIX}"
+            log(f"LLM : sujet reçu -> {subject}", level="OK")
+        subject = " ".join(subject.split()[:40])
+        return f"{subject}, {STYLE_SUFFIX}"
 
     # ------------------------------------------------------------------
     # 2) Génération d'image : Cloudflare -> Hugging Face -> Pollinations
@@ -379,7 +380,7 @@ class TextPost:
         url = (f"https://api.cloudflare.com/client/v4/accounts/{account}"
                f"/ai/run/{CF_IMAGE_MODEL}")
         headers = {"Authorization": f"Bearer {token}"}
-        body = {"prompt": prompt[:2000], "steps": 6}   # schnell : 8 steps maximum
+        body = {"prompt": prompt[:2000], "steps": 8}   # schnell : 8 steps maximum
         if seed is not None:
             body["seed"] = int(seed) % 2_000_000_000
 
@@ -614,12 +615,12 @@ class TextPost:
         w, h = img.size
         # Vignette douce
         mask = Image.radial_gradient("L").resize((w, h), Image.LANCZOS)
-        mask = mask.point(lambda p: int(max(0, p - 90) * 0.55))
+        mask = mask.point(lambda p: int(max(0, p - 90) * 0.35))
         img = Image.composite(Image.new("RGB", (w, h), (3, 8, 22)), img, mask)
 
         # Grain très léger : casse l'aspect "lisse" typique des images IA
         noise = Image.effect_noise((w, h), 14).convert("RGB")
-        img = Image.blend(img, ImageChops.soft_light(img, noise), 0.30)
+        img = Image.blend(img, ImageChops.soft_light(img, noise), 0.10)
         return img
 
     @staticmethod
@@ -749,13 +750,18 @@ class TextPost:
     @classmethod
     def _ar_runs(cls, text):
         """Découpe en blocs : mots arabes seuls, mots latins/nombres regroupés (ordre LTR)."""
-        runs = []
+        runs = []   # (texte, est_arabe, collé_au_suivant)
         for tok in text.split():
+            m = re.match(r"^([\u0600-\u06FF]{1,2})([A-Za-z0-9].*)$", tok)
+            if m:   # « وOpenAI » -> « و » (collé) + « OpenAI »
+                runs.append((m.group(1), True, True))
+                runs.append((m.group(2), False, False))
+                continue
             is_ar = bool(cls._AR_RE.search(tok))
             if runs and not is_ar and not runs[-1][1]:
-                runs[-1] = (runs[-1][0] + " " + tok, False)
+                runs[-1] = (runs[-1][0] + " " + tok, False, False)
             else:
-                runs.append((tok, is_ar))
+                runs.append((tok, is_ar, False))
         return runs
 
     @classmethod
@@ -770,21 +776,24 @@ class TextPost:
         runs = self._ar_runs(text)
         space = draw.textlength(" ", font=font)
         total = 0
-        for run, is_ar in runs:
+        for i, (run, is_ar, glue) in enumerate(runs):
             s, kw = self._run_args(run, is_ar)
             total += draw.textlength(s, font=font, **kw)
-        return total + space * max(0, len(runs) - 1)
+            if i < len(runs) - 1 and not glue:
+                total += space
+        return total
 
     def _draw_rtl_line(self, draw, right_x, y, text, font, fill):
         """Dessine une ligne arabe alignée à droite : 1er mot à droite, suivants vers la gauche."""
         space = draw.textlength(" ", font=font)
         x = right_x
-        for run, is_ar in self._ar_runs(text):
+        for run, is_ar, glue in self._ar_runs(text):
             s, kw = self._run_args(run, is_ar)
             rw = draw.textlength(s, font=font, **kw)
             x -= rw
             draw.text((x, y), s, font=font, fill=fill, **kw)
-            x -= space
+            if not glue:
+                x -= space
 
     def _wrap(self, draw, text, font, max_w):
         lines, cur = [], []
@@ -822,7 +831,16 @@ class TextPost:
             if not LOGO_PATH.is_file():
                 log(f"Logo introuvable ({LOGO_PATH}) : logo texte utilisé à la place.")
                 return None
-            logo = Image.open(LOGO_PATH).convert("RGBA")
+            raw = Image.open(LOGO_PATH)
+            has_alpha = raw.mode in ("RGBA", "LA") or "transparency" in raw.info
+            logo = raw.convert("RGBA")
+            if LOGO_KEY_BLACK and not has_alpha:
+                rgb = logo.convert("RGB")
+                coins = [rgb.getpixel(c) for c in ((0, 0), (rgb.width - 1, 0),
+                                                   (0, rgb.height - 1),
+                                                   (rgb.width - 1, rgb.height - 1))]
+                if all(sum(c) / 3 < 40 for c in coins):
+                    logo.putalpha(rgb.convert("L").point(lambda v: min(255, int(v * 1.6))))
             ratio = min(int(w * 0.24) / logo.width, int(h * 0.11) / logo.height)
             size = (max(1, int(logo.width * ratio)), max(1, int(logo.height * ratio)))
             return logo.resize(size, Image.LANCZOS)
@@ -949,6 +967,23 @@ class TextPost:
     # ------------------------------------------------------------------
     # 5) Pipeline image complet
     # ------------------------------------------------------------------
+    @staticmethod
+    def _compose_layout(img):
+        """Photo en haut (jamais sous le titre), fondu vers un fond sombre en bas."""
+        bg = (3, 8, 22)
+        photo_h = int(OUT_H * PHOTO_RATIO)
+        photo = ImageOps.fit(img, (OUT_W, photo_h), Image.LANCZOS, centering=(0.5, 0.45))
+        canvas = Image.new("RGB", (OUT_W, OUT_H), bg)
+        canvas.paste(photo, (0, 0))
+        fade_h = int(photo_h * 0.35)
+        mask = Image.new("L", (OUT_W, OUT_H), 0)
+        d = ImageDraw.Draw(mask)
+        for i in range(fade_h):
+            d.line([(0, photo_h - fade_h + i), (OUT_W, photo_h - fade_h + i)],
+                   fill=int(255 * (i / fade_h) ** 1.4))
+        d.rectangle([0, photo_h, OUT_W, OUT_H], fill=255)
+        return Image.composite(Image.new("RGB", (OUT_W, OUT_H), bg), canvas, mask)
+
     def generer_image(self, news_original=None, headline=None, image_url=None):
         t0 = time.time()
         log("Image 1/5 : demande du prompt photo au LLM (Groq)…")
@@ -969,9 +1004,9 @@ class TextPost:
             log("Aucune image -> fond graphique de secours.", level="WARN")
             img = self._image_fallback_design()
 
-        log("Image 4/5 : recadrage 4:5, netteté, couleurs, vignette, grain…")
-        img = ImageOps.fit(img, (OUT_W, OUT_H), Image.LANCZOS, centering=(0.5, 0.4))
+        log("Image 4/5 : netteté, couleurs, puis mise en page 4:5 (photo en haut, fondu sombre en bas)…")
         img = self._enhance_image(img)
+        img = self._compose_layout(img)
 
         log("Image 5/5 : logo + titre arabe"
             + (f" : « {headline} »" if headline else " (aucun titre)"))
@@ -1604,6 +1639,7 @@ def main():
             raison = resultat.get("erreur") or "Facebook et Instagram n'ont pas confirmé (voir ❌ ci-dessus)"
             STATS["echecs"].append((title, raison))
             log(f"NON PUBLIÉ : {raison}", level="ERROR")
+        time.sleep(30)
 
     # ---------------- ÉTAPE 6 : résumé ----------------
     if STATS["publies"] > 0:
